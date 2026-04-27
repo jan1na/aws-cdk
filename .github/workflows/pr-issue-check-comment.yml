@@ -1,0 +1,32 @@
+name: PR Issue Reference Check - Comment
+on:
+  workflow_run:
+    workflows: ["PR Issue Reference Check"]
+    types: [completed]
+
+jobs:
+  post-comment:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Download result artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: pr-issue-check-result
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install type dependencies
+        run: yarn install --frozen-lockfile
+      - name: Compile TypeScript
+        run: npx tsc --project scripts/tsconfig.pr-issue-check.json
+      - name: Post or update comment
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { prIssueCheckComment } = require('./scripts/pr-issue-check.js');
+            await prIssueCheckComment({ github, context, core });

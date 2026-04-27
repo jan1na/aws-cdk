@@ -4,9 +4,12 @@
  * Validates that a pull request description contains a valid issue reference
  * in the expected location (first two non-empty lines), following the PR template.
  *
- * Called from the pr-issue-check.yml workflow via actions/github-script.
+ * Split into two phases for the two-workflow pattern:
+ * - prIssueCheck: runs in pull_request context (read-only), writes result artifact
+ * - prIssueCheckComment: runs in workflow_run context (write access), posts comments
  */
 
+import * as fs from 'fs';
 import type { GitHub } from '@actions/github/lib/utils';
 import type { Context } from '@actions/github/lib/context';
 import type * as core from '@actions/core';
@@ -15,6 +18,15 @@ type GitHubClient = InstanceType<typeof GitHub>;
 type ActionCore = typeof core;
 
 const BOT_MARKER = '<!-- pr-issue-check-bot -->';
+const RESULT_FILE = 'pr-issue-check-result.json';
+
+interface CheckResult {
+  prNumber: number;
+  owner: string;
+  repo: string;
+  action: 'comment' | 'delete';
+  message?: string;
+}
 
 async function findBotComment(github: GitHubClient, owner: string, repo: string, prNumber: number) {
   const { data: comments } = await github.rest.issues.listComments({
@@ -112,6 +124,10 @@ export async function validateIssueReferences(github: GitHubClient, owner: strin
   return invalid;
 }
 
+/**
+ * Phase 1: Runs in pull_request context (read-only).
+ * Validates the PR description and writes the result to an artifact file.
+ */
 export async function prIssueCheck({ github, context, core }: { github: GitHubClient; context: Context; core: ActionCore }): Promise<void> {
   const pr = context.payload.pull_request;
   if (!pr) {
@@ -130,7 +146,8 @@ export async function prIssueCheck({ github, context, core }: { github: GitHubCl
 
   if (matches.length === 0) {
     const message = buildMissingReferenceMessage(lines);
-    await upsertComment(github, core, owner, repo, prNumber, message);
+    const result: CheckResult = { prNumber, owner, repo, action: 'comment', message };
+    fs.writeFileSync(RESULT_FILE, JSON.stringify(result));
     return;
   }
 
@@ -147,9 +164,30 @@ export async function prIssueCheck({ github, context, core }: { github: GitHubCl
       'Please make sure your PR references an existing issue using the format `Closes #123`.',
     ].join('\n');
 
-    await upsertComment(github, core, owner, repo, prNumber, message);
+    const result: CheckResult = { prNumber, owner, repo, action: 'comment', message };
+    fs.writeFileSync(RESULT_FILE, JSON.stringify(result));
     return;
   }
 
-  await deleteBotComment(github, core, owner, repo, prNumber);
+  const result: CheckResult = { prNumber, owner, repo, action: 'delete' };
+  fs.writeFileSync(RESULT_FILE, JSON.stringify(result));
+}
+
+/**
+ * Phase 2: Runs in workflow_run context (write access).
+ * Reads the result artifact and posts, updates, or deletes the bot comment.
+ */
+export async function prIssueCheckComment({ github, context, core }: { github: GitHubClient; context: Context; core: ActionCore }): Promise<void> {
+  if (!fs.existsSync(RESULT_FILE)) {
+    core.info('No result artifact found — PR check likely passed without needing action.');
+    return;
+  }
+
+  const result: CheckResult = JSON.parse(fs.readFileSync(RESULT_FILE, 'utf-8'));
+
+  if (result.action === 'comment' && result.message) {
+    await upsertComment(github, core, result.owner, result.repo, result.prNumber, result.message);
+  } else if (result.action === 'delete') {
+    await deleteBotComment(github, core, result.owner, result.repo, result.prNumber);
+  }
 }

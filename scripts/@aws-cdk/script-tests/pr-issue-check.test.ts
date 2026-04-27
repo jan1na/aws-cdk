@@ -1,9 +1,18 @@
-import { prIssueCheck } from '../../pr-issue-check';
+import * as fs from 'fs';
+import { prIssueCheck, prIssueCheckComment } from '../../pr-issue-check';
 
+const RESULT_FILE = 'pr-issue-check-result.json';
+
+afterEach(() => {
+  if (fs.existsSync(RESULT_FILE)) {
+    fs.unlinkSync(RESULT_FILE);
+  }
+});
 
 function createMockCore() {
   return {
     warning: jest.fn(),
+    info: jest.fn(),
   };
 }
 
@@ -46,11 +55,21 @@ function createMockGithub({ issues = {}, existingComments = [] }: { issues?: Rec
   };
 }
 
+/**
+ * Runs both phases: prIssueCheck (writes artifact) then prIssueCheckComment (reads artifact and comments).
+ * This simulates the full two-workflow pipeline in a single test.
+ */
 async function runCheck(body: string, opts: { issues?: Record<number, MockIssue>; existingComments?: Array<{ id: number; user: { type: string }; body: string }> } = {}) {
   const core = createMockCore();
   const context = createMockContext(body);
   const github = createMockGithub(opts);
+
+  // Phase 1: check (writes result file)
   await prIssueCheck({ github: github as any, context: context as any, core: core as any });
+
+  // Phase 2: comment (reads result file and posts comment)
+  await prIssueCheckComment({ github: github as any, context: context as any, core: core as any });
+
   return { core, github };
 }
 
@@ -309,6 +328,7 @@ describe('should comment - invalid issue references', () => {
     const core = createMockCore();
     const context = createMockContext(body);
     await prIssueCheck({ github: github as any, context: context as any, core: core as any });
+    await prIssueCheckComment({ github: github as any, context: context as any, core: core as any });
     expect(github.rest.issues.createComment).toHaveBeenCalledWith(
       expect.objectContaining({
         body: expect.stringContaining('#50 (does not exist)'),
@@ -410,6 +430,7 @@ describe('comment management', () => {
     const context = createMockContext(body);
     const github = createMockGithub({ existingComments: [existingComment] });
     await prIssueCheck({ github: github as any, context: context as any, core: core as any });
+    await prIssueCheckComment({ github: github as any, context: context as any, core: core as any });
     expect(github.rest.issues.updateComment).toHaveBeenCalledWith(
       expect.objectContaining({ comment_id: 100 }),
     );
@@ -434,6 +455,7 @@ describe('comment management', () => {
       existingComments: [existingComment],
     });
     await prIssueCheck({ github: github as any, context: context as any, core: core as any });
+    await prIssueCheckComment({ github: github as any, context: context as any, core: core as any });
     expect(github.rest.issues.deleteComment).toHaveBeenCalledWith(
       expect.objectContaining({ comment_id: 200 }),
     );
@@ -446,6 +468,7 @@ describe('comment management', () => {
     const github = createMockGithub();
     github.rest.issues.createComment.mockRejectedValue(new Error('rate limited'));
     await prIssueCheck({ github: github as any, context: context as any, core: core as any });
+    await prIssueCheckComment({ github: github as any, context: context as any, core: core as any });
     expect(core.warning).toHaveBeenCalledWith(expect.stringContaining('rate limited'));
   });
 });

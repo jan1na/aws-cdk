@@ -1,13 +1,13 @@
 name: PR Issue Reference Check
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, edited, reopened]
 
 jobs:
   check-issue-reference:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
+      pull-requests: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -18,7 +18,13 @@ jobs:
       - name: Check PR description for issue reference
         uses: actions/github-script@v9
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { prIssueCheck } = require('./scripts/pr-issue-check.js');
             await prIssueCheck({ github, context, core });
+      - name: Upload result artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr-issue-check-result
+          path: pr-issue-check-result.json
+          if-no-files-found: ignore
