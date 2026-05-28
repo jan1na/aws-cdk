@@ -1,0 +1,19 @@
+name: Sync PR Scores to Project Board
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+      PROJECT_OWNER: jan1na
+      PROJECT_NUMBER: "2"
+      OWNER_TYPE: user
+      SLOP_API_URL: https://sxnsgrwbab.execute-api.us-west-2.amazonaws.com/prod
+      REPO: jan1na/aws-cdk
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/sync_scores.py
