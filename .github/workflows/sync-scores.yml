@@ -12,7 +12,7 @@ jobs:
       PROJECT_OWNER: jan1na
       PROJECT_NUMBER: "2"
       OWNER_TYPE: user
-      SLOP_API_URL: https://sxnsgrwbab.execute-api.us-west-2.amazonaws.com/prod
+      SLOP_API_URL: https://wyjpuy2adi.execute-api.us-west-2.amazonaws.com/prod
       REPO: jan1na/aws-cdk
     steps:
       - uses: actions/checkout@v4
