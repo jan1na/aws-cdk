@@ -96,7 +96,7 @@ class ProjectSyncer:
             {owner_field}(login: $login) {{
                 projectV2(number: $number) {{
                     id
-                    fields(first: 20) {{
+                    fields(first: 50) {{
                         nodes {{
                             ... on ProjectV2Field {{ id name }}
                             ... on ProjectV2SingleSelectField {{ id name options {{ id name }} }}
